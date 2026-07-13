@@ -22,5 +22,7 @@ export async function signOut(): Promise<void> {
   const { clearPendingAuth } = await import("@/lib/auth/pending-auth");
 
   await Promise.all([clearAccount(), clearIdentityStore(), clearAllSessions()]);
+  const { clearMessageHistory } = await import("@/lib/storage/message-history-store");
+  await clearMessageHistory();
   clearPendingAuth();
 }

@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePaginatedQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { fromBase64 } from "@/lib/crypto/bytes";
 import { decryptSyncEvent } from "@/lib/device-sync/sync-channel";
 import { loadAccount } from "@/lib/storage/account-store";
+import { ensureSyncChannelKey } from "@/lib/device-sync/ensure-sync-channel-key";
+import {
+  appendMessageHistory,
+  loadMessageHistory,
+  type HistoryMessage,
+} from "@/lib/storage/message-history-store";
 import { importDeviceRecord } from "@/lib/storage/session-store";
 import { deserializeRatchetState } from "@/lib/crypto/double-ratchet";
 
@@ -14,19 +20,26 @@ export function useDeviceSync() {
   const [account, setAccount] = useState<Awaited<
     ReturnType<typeof loadAccount>
   > | null>(null);
-  const [syncedMessages, setSyncedMessages] = useState<
-    Array<{ conversationId: string; plaintext: string; timestamp: number }>
-  >([]);
+  const [syncedMessages, setSyncedMessages] = useState<HistoryMessage[]>([]);
+  const processedEventIds = useRef(new Set<string>());
 
   useEffect(() => {
-    void loadAccount().then(setAccount);
+    void (async () => {
+      const resolvedAccount = await ensureSyncChannelKey();
+      if (!resolvedAccount) return;
+
+      setAccount(resolvedAccount);
+      if (resolvedAccount.syncChannelKey) {
+        setSyncedMessages(await loadMessageHistory());
+      }
+    })();
   }, []);
 
   const deviceConvexId = account?.convexDeviceId as Id<"devices"> | undefined;
 
   const { results: events } = usePaginatedQuery(
     api.deviceSync.listSyncEvents,
-    deviceConvexId && !account?.isPrimary
+    deviceConvexId && account?.syncChannelKey
       ? { targetDeviceConvexId: deviceConvexId }
       : "skip",
     { initialNumItems: 50 },
@@ -38,27 +51,32 @@ export function useDeviceSync() {
     async function processEvents() {
       const syncKey = fromBase64(account!.syncChannelKey!);
       for (const event of events!) {
+        if (processedEventIds.current.has(event._id)) continue;
+        processedEventIds.current.add(event._id);
+
         try {
           const payload = await decryptSyncEvent(
             syncKey,
             event.encryptedPayload,
           );
           if (payload.type === "message_copy") {
+            const message: HistoryMessage = {
+              conversationId: payload.conversationId,
+              plaintext: payload.plaintext,
+              timestamp: payload.timestamp,
+              direction: payload.direction,
+            };
+            await appendMessageHistory(message);
             setSyncedMessages((prev) => {
               const exists = prev.some(
                 (m) =>
-                  m.timestamp === payload.timestamp &&
-                  m.plaintext === payload.plaintext,
+                  m.timestamp === message.timestamp &&
+                  m.plaintext === message.plaintext &&
+                  m.direction === message.direction &&
+                  m.conversationId === message.conversationId,
               );
               if (exists) return prev;
-              return [
-                ...prev,
-                {
-                  conversationId: payload.conversationId,
-                  plaintext: payload.plaintext,
-                  timestamp: payload.timestamp,
-                },
-              ];
+              return [...prev, message];
             });
           } else if (payload.type === "session_state") {
             await importDeviceRecord({
@@ -72,7 +90,7 @@ export function useDeviceSync() {
             });
           }
         } catch {
-          // skip invalid events
+          processedEventIds.current.delete(event._id);
         }
       }
     }

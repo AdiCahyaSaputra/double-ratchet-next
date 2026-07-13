@@ -153,3 +153,40 @@ export const listAccounts = query({
     return accounts.map(toPublicAccount);
   },
 });
+
+export const getSyncChannelKey = query({
+  args: {
+    deviceConvexId: v.id("devices"),
+    deviceId: v.string(),
+  },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const device = await ctx.db.get("devices", args.deviceConvexId);
+    if (!device || device.deviceId !== args.deviceId) {
+      throw new Error("Unauthorized device");
+    }
+
+    const account = await ctx.db.get("accounts", device.accountId);
+    return account?.syncChannelKey ?? null;
+  },
+});
+
+export const setSyncChannelKey = mutation({
+  args: {
+    deviceConvexId: v.id("devices"),
+    deviceId: v.string(),
+    syncChannelKey: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const device = await ctx.db.get("devices", args.deviceConvexId);
+    if (!device || device.deviceId !== args.deviceId) {
+      throw new Error("Unauthorized device");
+    }
+
+    await ctx.db.patch(device.accountId, {
+      syncChannelKey: args.syncChannelKey,
+    });
+    return null;
+  },
+});

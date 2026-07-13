@@ -18,8 +18,13 @@ export const pushSyncEvent = mutation({
     if (!source || source.deviceId !== args.sourceDeviceId) {
       throw new Error("Unauthorized");
     }
-    if (!source.isPrimary) {
-      throw new Error("Only primary can push sync events");
+
+    const target = await ctx.db.get("devices", args.targetDeviceConvexId);
+    if (!target || target.accountId !== source.accountId) {
+      throw new Error("Unauthorized target device");
+    }
+    if (target._id === source._id) {
+      throw new Error("Cannot sync to self");
     }
 
     return await ctx.db.insert("deviceSyncEvents", {

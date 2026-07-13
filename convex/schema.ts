@@ -6,6 +6,7 @@ export default defineSchema({
     username: v.string(),
     passwordSalt: v.optional(v.string()),
     passwordHash: v.optional(v.string()),
+    syncChannelKey: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_username", ["username"]),
 
@@ -44,6 +45,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_recipient_device", ["recipientDeviceId", "createdAt"])
+    .index("by_sender_device", ["senderDeviceId", "createdAt"])
     .index("by_conversation", [
       "senderDeviceId",
       "recipientDeviceId",

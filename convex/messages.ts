@@ -3,7 +3,21 @@ import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
+import type { Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
+
+async function resolvePeerUsername(
+  ctx: QueryCtx,
+  ownAccountId: Id<"accounts">,
+  peerDeviceConvexId: Id<"devices">,
+): Promise<string | null> {
+  const device = await ctx.db.get("devices", peerDeviceConvexId);
+  if (!device || device.accountId === ownAccountId) return null;
+
+  const account = await ctx.db.get("accounts", device.accountId);
+  return account?.username ?? null;
+}
 
 const messageDocValidator = v.object({
   _id: v.id("messages"),
@@ -51,6 +65,57 @@ export const listForDevice = query({
       )
       .order("desc")
       .paginate(args.paginationOpts);
+  },
+});
+
+export const listReceivedForDeviceSync = query({
+  args: {
+    deviceConvexId: v.id("devices"),
+    accountId: v.id("accounts"),
+  },
+  returns: v.array(
+    v.object({
+      peerUsername: v.string(),
+      envelope: v.string(),
+      senderClientDeviceId: v.string(),
+      createdAt: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const received = await ctx.db
+      .query("messages")
+      .withIndex("by_recipient_device", (q) =>
+        q.eq("recipientDeviceId", args.deviceConvexId),
+      )
+      .collect();
+
+    const results: Array<{
+      peerUsername: string;
+      envelope: string;
+      senderClientDeviceId: string;
+      createdAt: number;
+    }> = [];
+
+    for (const message of received) {
+      const peerUsername = await resolvePeerUsername(
+        ctx,
+        args.accountId,
+        message.senderDeviceId,
+      );
+      if (!peerUsername) continue;
+
+      const senderDevice = await ctx.db.get("devices", message.senderDeviceId);
+      if (!senderDevice) continue;
+
+      results.push({
+        peerUsername,
+        envelope: message.envelope,
+        senderClientDeviceId: senderDevice.deviceId,
+        createdAt: message.createdAt,
+      });
+    }
+
+    return results;
   },
 });
 

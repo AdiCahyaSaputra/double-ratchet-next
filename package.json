@@ -19,6 +19,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.42.1",
+    "date-fns": "^4.4.0",
     "idb-keyval": "^6.2.6",
     "lucide-react": "^1.24.0",
     "next": "16.2.10",

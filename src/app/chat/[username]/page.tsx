@@ -23,9 +23,9 @@ export default function ChatPage({
   const syncedForPeer = syncedMessages
     .filter((m) => m.conversationId === username)
     .map((m) => ({
-      id: `sync-${m.timestamp}`,
+      id: `sync-${m.timestamp}-${m.direction}`,
       text: m.plaintext,
-      isOwn: true,
+      isOwn: m.direction === "sent",
       timestamp: m.timestamp,
     }));
 

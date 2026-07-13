@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { formatRelative } from "date-fns";
 
 interface MessageBubbleProps {
   text: string;
@@ -26,7 +27,7 @@ export function MessageBubble({ text, isOwn, timestamp }: MessageBubbleProps) {
             isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
           )}
         >
-          {new Date(timestamp).toLocaleTimeString()}
+          {formatRelative(new Date(timestamp), new Date())}
         </p>
       </div>
     </div>

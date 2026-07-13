@@ -13,6 +13,7 @@ import {
   type ProvisioningQRData,
 } from "@/lib/device-sync/provisioning";
 import { buildSyncArchive } from "@/lib/device-sync/sync-archive";
+import { collectSyncHistory } from "@/lib/device-sync/collect-sync-history";
 import { serializeRatchetState } from "@/lib/crypto/double-ratchet";
 import { toBase64, fromBase64 } from "@/lib/crypto/bytes";
 import { generateKeyPair } from "@/lib/crypto/x25519";
@@ -96,9 +97,25 @@ export function useDeviceLinking() {
         primaryDeviceConvexId: account.convexDeviceId as Id<"devices">,
       });
 
+      await updateSyncChannelKey(syncChannelKey);
+
+      const identity = await ensureIdentityStore();
+      const { ConvexHttpClient } = await import("convex/browser");
+      const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+      await client.mutation(api.accounts.setSyncChannelKey, {
+        deviceConvexId: account.convexDeviceId as Id<"devices">,
+        deviceId: identity.deviceId,
+        syncChannelKey,
+      });
+
       if (withSync && archiveKey) {
         setSyncStatus("uploading");
         const sessions = await listAllDeviceRecords();
+        const messages = await collectSyncHistory(
+          identity,
+          account.accountId as Id<"accounts">,
+          account.convexDeviceId as Id<"devices">,
+        );
         const archive = await buildSyncArchive(archiveKey, {
           sessions: sessions.map((s) => ({
             remoteDeviceId: s.remoteDeviceId,
@@ -113,12 +130,12 @@ export function useDeviceLinking() {
               : null,
             inactiveSessions: [],
           })),
-          messages: [],
+          messages,
         });
         await uploadArchive({
           provisioningId: payload.provisioningId,
           encryptedArchive: archive,
-          primaryDeviceId: (await ensureIdentityStore()).deviceId,
+          primaryDeviceId: identity.deviceId,
           primaryDeviceConvexId: account.convexDeviceId as Id<"devices">,
         });
         setSyncStatus("complete");
@@ -199,6 +216,9 @@ export function useDeviceLinking() {
         const { importDeviceRecord } = await import(
           "@/lib/storage/session-store"
         );
+        const { importMessageHistory } = await import(
+          "@/lib/storage/message-history-store"
+        );
         const { deserializeRatchetState } = await import(
           "@/lib/crypto/double-ratchet"
         );
@@ -221,6 +241,7 @@ export function useDeviceLinking() {
             });
           }
         }
+        await importMessageHistory(content.messages);
         clearPendingAuth();
         setAwaitingArchive(false);
         setSyncStatus("complete");

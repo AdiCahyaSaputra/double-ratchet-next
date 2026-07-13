@@ -37,27 +37,24 @@ export default function LinkPage() {
     void hasLocalSession().then(setHasSession);
   }, []);
 
-  useEffect(() => {
-    if (syncStatus === "complete") {
-      void hasLocalSession().then(setHasSession);
-    }
-  }, [syncStatus]);
-
   if (!ready) {
     return <AuthLoading />;
   }
 
+  const canGoHome = hasSession || syncStatus === "complete";
+
   return (
     <main className="mx-auto w-full max-w-lg p-8">
       <Button
+        key={canGoHome ? "home" : "login"}
         variant="ghost"
         size="sm"
         className="mb-6 -ml-2"
         nativeButton={false}
-        render={<Link href={hasSession ? "/" : "/login"} />}
+        render={<Link href={canGoHome ? "/" : "/login"} />}
       >
         <ArrowLeft />
-        {hasSession ? "Home" : "Sign in"}
+        {canGoHome ? "Home" : "Sign in"}
       </Button>
       <h1 className="mb-6 text-2xl font-bold tracking-tight">Link this device</h1>
 
