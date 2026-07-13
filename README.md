@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Double Ratchet Chat (Next.js + Convex)
 
-## Getting Started
+End-to-end encrypted messaging built from scratch using the [Signal Double Ratchet](https://signal.org/docs/specifications/doubleratchet/) algorithm, [X3DH](https://signal.org/docs/specifications/x3dh/) key agreement, and a simplified [Sesame](https://signal.org/docs/specifications/sesame/) session manager for multi-device support.
 
-First, run the development server:
+## Features
+
+- **Custom crypto** — X25519, HKDF-SHA256, AES-256-GCM (no libsignal dependency)
+- **Double Ratchet** — forward secrecy via symmetric + DH ratchets
+- **X3DH** — asynchronous session establishment with prekey bundles
+- **Multi-device** — per-device sessions, message fan-out to all recipient devices
+- **Device linking** — QR provisioning with encrypted sync channel and optional history archive
+- **Convex backend** — real-time message relay and public key directory (stores ciphertext only)
+
+## Architecture
+
+```
+┌─────────────┐     encrypted envelopes      ┌─────────────┐
+│   Client    │ ◄──────────────────────────► │   Convex    │
+│  (Next.js)  │     prekey bundles (public)  │   Backend   │
+│             │                              │             │
+│ IndexedDB:  │                              │  ciphertext │
+│ - identity  │                              │  + pubkeys  │
+│ - sessions  │                              └─────────────┘
+│ - ratchet   │
+└─────────────┘
+```
+
+**Security boundary:** The server never sees private keys, ratchet state, or plaintext. It only relays encrypted blobs and distributes public prekey material.
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 20+
+- npm
+
+### Install
+
+```bash
+npm install
+```
+
+### Start Convex (terminal 1)
+
+```bash
+npx convex dev
+```
+
+### Start Next.js (terminal 2)
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Run tests
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm test
+```
 
-## Learn More
+## Usage
 
-To learn more about Next.js, take a look at the following resources:
+1. **Register** — Create an account at `/register` with username and password; keys are generated locally in IndexedDB
+2. **Sign in** — Use `/login` with your credentials. If this browser has no local keys yet, you will be sent to `/link` to provision the device
+3. **Chat** — Browse users and send encrypted messages (fan-out to all peer devices)
+4. **Link device** — On a new device, sign in then open `/link` to show a QR code; on your primary device, scan it at `/settings/devices` (paste fallback available)
+5. **Manage devices** — View and unlink devices from settings
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/lib/crypto/       # X25519, HKDF, KDF chains, X3DH, Double Ratchet
+src/lib/sesame/       # Per-device session manager + fan-out
+src/lib/device-sync/  # QR provisioning, sync channel, archive
+src/lib/storage/      # IndexedDB identity, account, session stores
+convex/               # Accounts, devices, messages, provisioning, sync
+```
 
-## Deploy on Vercel
+## Threat model
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Threat | Mitigation |
+|--------|------------|
+| Server reads messages | E2E encryption; server stores ciphertext only |
+| Stolen old message keys | Forward secrecy via ratchet |
+| Stolen current device keys | Future secrecy via DH ratchet steps |
+| Multi-device delivery | Separate session per device; fan-out encrypt |
+| Device linking interception | Ephemeral ECDH + short-lived provisioning TTL |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Not in scope (v1):** Header encryption, post-quantum ratchet, group messaging, password reset, production session auth.
+
+## Auth note
+
+Accounts use username + password (PBKDF2-SHA-256 hashed on the server). E2E private keys remain local in IndexedDB — password login verifies account ownership but does not restore keys on a new browser. New devices must complete QR provisioning from a primary device. Camera QR scanning is supported on the primary device at `/settings/devices` (requires HTTPS or localhost). Device mutations still use device-ID ownership checks for the demo.
+
+## License
+
+MIT
