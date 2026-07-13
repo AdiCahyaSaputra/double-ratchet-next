@@ -32,12 +32,12 @@ End-to-end encrypted messaging built from scratch using the [Signal Double Ratch
 ### Prerequisites
 
 - Node.js 20+
-- npm
+- pnpm
 
 ### Install
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### Start Convex (terminal 1)
@@ -49,7 +49,7 @@ npx convex dev
 ### Start Next.js (terminal 2)
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -57,7 +57,7 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Run tests
 
 ```bash
-npm test
+pnpm test
 ```
 
 ## Usage

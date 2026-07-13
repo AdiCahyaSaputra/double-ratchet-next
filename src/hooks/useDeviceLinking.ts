@@ -19,14 +19,17 @@ import { generateKeyPair } from "@/lib/crypto/x25519";
 import { ensureIdentityStore } from "@/lib/storage/identity-store";
 import { loadAccount, saveAccount, updateSyncChannelKey } from "@/lib/storage/account-store";
 import { clearPendingAuth } from "@/lib/auth/pending-auth";
-import { createPreKeyBundle } from "@/lib/crypto/x3dh";
 import { listAllDeviceRecords } from "@/lib/storage/session-store";
 import type { SyncStatus } from "@/components/SyncProgress";
 
 export function useDeviceLinking() {
   const [qrPayload, setQrPayload] = useState<ProvisioningQRData | null>(null);
   const ephemeralRef = useRef<ReturnType<typeof createProvisioningRequest> | null>(null);
+  const linkStartedRef = useRef(false);
+  const archiveKeyRef = useRef<string | null>(null);
+  const archiveRestoredRef = useRef(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [awaitingArchive, setAwaitingArchive] = useState(false);
 
   const createRequest = useMutation(api.provisioning.createRequest);
   const sendProvisioning = useMutation(api.provisioning.sendProvisioningMessage);
@@ -42,6 +45,10 @@ export function useDeviceLinking() {
   );
 
   const startLinking = useCallback(async (deviceName: string) => {
+    linkStartedRef.current = false;
+    archiveKeyRef.current = null;
+    archiveRestoredRef.current = false;
+    setAwaitingArchive(false);
     const req = createProvisioningRequest(deviceName);
     ephemeralRef.current = req;
     setQrPayload(req.payload);
@@ -122,6 +129,8 @@ export function useDeviceLinking() {
 
   useEffect(() => {
     if (!qrPayload || !getProvisioningMsg || !ephemeralRef.current) return;
+    if (linkStartedRef.current) return;
+    linkStartedRef.current = true;
 
     async function finishLinking() {
       try {
@@ -133,7 +142,6 @@ export function useDeviceLinking() {
           getProvisioningMsg!.encryptedPayload,
         );
 
-        const bundle = createPreKeyBundle(identity, true);
         const deviceConvexId = await linkDevice({
           provisioningId: qrPayload!.provisioningId,
           deviceId: identity.deviceId,
@@ -161,45 +169,69 @@ export function useDeviceLinking() {
         });
         await updateSyncChannelKey(msg.syncChannelKey);
 
-        if (msg.archiveKey && getArchive) {
-          const { restoreSyncArchive } = await import(
-            "@/lib/device-sync/sync-archive"
-          );
-          const { importDeviceRecord } = await import(
-            "@/lib/storage/session-store"
-          );
-          const { deserializeRatchetState } = await import(
-            "@/lib/crypto/double-ratchet"
-          );
-          const content = await restoreSyncArchive(
-            fromBase64(msg.archiveKey),
-            getArchive,
-          );
-          for (const session of content.sessions) {
-            if (session.activeSession) {
-              await importDeviceRecord({
-                remoteDeviceId: session.remoteDeviceId,
-                activeSession: {
-                  id: session.activeSession.id,
-                  ratchetState: deserializeRatchetState(
-                    session.activeSession.ratchetState,
-                  ),
-                  createdAt: session.activeSession.createdAt,
-                },
-                inactiveSessions: [],
-              });
-            }
-          }
+        if (msg.archiveKey) {
+          archiveKeyRef.current = msg.archiveKey;
+          setAwaitingArchive(true);
+          return;
         }
+
         clearPendingAuth();
         setSyncStatus("complete");
       } catch {
+        linkStartedRef.current = false;
         setSyncStatus("error");
       }
     }
 
     void finishLinking();
-  }, [getProvisioningMsg, getArchive, qrPayload, linkDevice]);
+  }, [getProvisioningMsg, qrPayload, linkDevice]);
+
+  useEffect(() => {
+    if (!awaitingArchive || !getArchive || !archiveKeyRef.current) return;
+    if (archiveRestoredRef.current) return;
+    archiveRestoredRef.current = true;
+
+    async function restoreArchive() {
+      try {
+        const { restoreSyncArchive } = await import(
+          "@/lib/device-sync/sync-archive"
+        );
+        const { importDeviceRecord } = await import(
+          "@/lib/storage/session-store"
+        );
+        const { deserializeRatchetState } = await import(
+          "@/lib/crypto/double-ratchet"
+        );
+        const content = await restoreSyncArchive(
+          fromBase64(archiveKeyRef.current!),
+          getArchive!,
+        );
+        for (const session of content.sessions) {
+          if (session.activeSession) {
+            await importDeviceRecord({
+              remoteDeviceId: session.remoteDeviceId,
+              activeSession: {
+                id: session.activeSession.id,
+                ratchetState: deserializeRatchetState(
+                  session.activeSession.ratchetState,
+                ),
+                createdAt: session.activeSession.createdAt,
+              },
+              inactiveSessions: [],
+            });
+          }
+        }
+        clearPendingAuth();
+        setAwaitingArchive(false);
+        setSyncStatus("complete");
+      } catch {
+        archiveRestoredRef.current = false;
+        setSyncStatus("error");
+      }
+    }
+
+    void restoreArchive();
+  }, [awaitingArchive, getArchive]);
 
   return {
     qrPayload,
