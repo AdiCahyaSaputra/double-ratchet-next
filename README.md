@@ -25,6 +25,8 @@ End-to-end encrypted messaging built from scratch using the [Signal Double Ratch
 └─────────────┘
 ```
 
+<img width="5692" height="5224" alt="image" src="https://github.com/user-attachments/assets/a0fe5f41-a48c-4762-9dae-00bd7443f6d4" />
+
 **Security boundary:** The server never sees private keys, ratchet state, or plaintext. It only relays encrypted blobs and distributes public prekey material.
 
 ## Getting started
