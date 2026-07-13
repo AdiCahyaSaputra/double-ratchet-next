@@ -11,51 +11,94 @@ interface QrScannerProps {
   active?: boolean;
 }
 
+function releaseVideoElement(video: HTMLVideoElement | null) {
+  if (!video) return;
+
+  const stream = video.srcObject;
+  if (stream instanceof MediaStream) {
+    for (const track of stream.getTracks()) {
+      track.stop();
+    }
+  }
+
+  video.srcObject = null;
+  video.removeAttribute("src");
+}
+
 export function QrScanner({ onScan, onError, active = true }: QrScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
+  const onScanRef = useRef(onScan);
+  const onErrorRef = useRef(onError);
   const [error, setError] = useState<string | null>(null);
-  const scannedRef = useRef(false);
 
   useEffect(() => {
-    if (!active || scannedRef.current) return;
+    onScanRef.current = onScan;
+    onErrorRef.current = onError;
+  });
+
+  useEffect(() => {
+    if (!active) return;
+
+    let cancelled = false;
+
+    function stopCamera() {
+      controlsRef.current?.stop();
+      controlsRef.current = null;
+      releaseVideoElement(videoRef.current);
+      BrowserMultiFormatReader.releaseAllStreams();
+    }
 
     const reader = new BrowserMultiFormatReader();
 
     async function start() {
-      if (!videoRef.current) return;
+      const video = videoRef.current;
+      if (!video || cancelled) return;
 
       try {
         const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+        if (cancelled) return;
+
         const deviceId = devices[0]?.deviceId;
 
         const controls = await reader.decodeFromVideoDevice(
           deviceId,
-          videoRef.current,
-          (result) => {
-            if (result && !scannedRef.current) {
-              scannedRef.current = true;
-              controlsRef.current?.stop();
-              onScan(result.getText());
-            }
+          video,
+          (result, _err, scanControls) => {
+            if (!result || cancelled) return;
+
+            scanControls.stop();
+            controlsRef.current = null;
+            releaseVideoElement(video);
+            BrowserMultiFormatReader.releaseAllStreams();
+            onScanRef.current(result.getText());
           },
         );
+
+        if (cancelled) {
+          controls.stop();
+          return;
+        }
+
         controlsRef.current = controls;
       } catch (err) {
+        if (cancelled) return;
+
+        stopCamera();
         const message =
           err instanceof Error ? err.message : "Camera access failed";
         setError(message);
-        onError?.(message);
+        onErrorRef.current?.(message);
       }
     }
 
     void start();
 
     return () => {
-      controlsRef.current?.stop();
-      controlsRef.current = null;
+      cancelled = true;
+      stopCamera();
     };
-  }, [active, onScan, onError]);
+  }, [active]);
 
   return (
     <div className="space-y-3">

@@ -46,7 +46,7 @@ export default function ChatPage({
 
   return (
     <main className="mx-auto w-full max-w-2xl p-4">
-      <Button variant="ghost" size="sm" className="mb-4 -ml-2" render={<Link href="/users" />}>
+      <Button variant="ghost" size="sm" className="mb-4 -ml-2" nativeButton={false} render={<Link href="/users" />}>
         <ArrowLeft />
         Users
       </Button>

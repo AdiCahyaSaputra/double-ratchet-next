@@ -37,6 +37,12 @@ export default function LinkPage() {
     void hasLocalSession().then(setHasSession);
   }, []);
 
+  useEffect(() => {
+    if (syncStatus === "complete") {
+      void hasLocalSession().then(setHasSession);
+    }
+  }, [syncStatus]);
+
   if (!ready) {
     return <AuthLoading />;
   }
@@ -47,6 +53,7 @@ export default function LinkPage() {
         variant="ghost"
         size="sm"
         className="mb-6 -ml-2"
+        nativeButton={false}
         render={<Link href={hasSession ? "/" : "/login"} />}
       >
         <ArrowLeft />

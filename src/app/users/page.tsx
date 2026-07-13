@@ -15,7 +15,7 @@ export default function UsersPage() {
 
   return (
     <main className="mx-auto w-full max-w-lg p-8">
-      <Button variant="ghost" size="sm" className="mb-6 -ml-2" render={<Link href="/" />}>
+      <Button variant="ghost" size="sm" className="mb-6 -ml-2" nativeButton={false} render={<Link href="/" />}>
         <ArrowLeft />
         Home
       </Button>
