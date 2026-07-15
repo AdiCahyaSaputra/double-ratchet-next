@@ -17,7 +17,7 @@ import {
 } from "@/lib/storage/message-history-store";
 import type { ChatMessage } from "@/components/ChatWindow";
 import { encryptSyncEvent } from "@/lib/device-sync/sync-channel";
-import type { LocalPreKeyStore } from "@/lib/crypto/x3dh";
+import { verifySignedPreKey, type LocalPreKeyStore } from "@/lib/crypto/x3dh";
 
 function messageDedupeKey(
   text: string,
@@ -262,11 +262,23 @@ export function useEncryptedChat(peerUsername: string) {
       try {
         const remoteDevices = await Promise.all(
           peerDevices.map(async (d) => {
-            const bundleWire = await fetchBundle(d._id);
+            const { bundle, signingPublicKey } = await fetchBundle(d._id);
+
+            const isVerified = verifySignedPreKey(
+              bundle.identityKey,
+              bundle.signedPreKey,
+              bundle.signedPreKeySignature,
+              signingPublicKey,
+            );
+
+            if (!isVerified) {
+              throw new Error("Signed pre key verification failed");
+            }
+
             return {
               deviceId: d.deviceId,
               convexDeviceId: d._id,
-              preKeyBundle: bundleWire,
+              preKeyBundle: bundle,
             };
           }),
         );
@@ -338,9 +350,10 @@ export function useEncryptedChat(peerUsername: string) {
   return { messages: decrypted, send, sending, error, account, localStore };
 }
 
-async function fetchBundle(
-  deviceConvexId: string,
-): Promise<PreKeyBundle> {
+async function fetchBundle(deviceConvexId: string): Promise<{
+  bundle: PreKeyBundle;
+  signingPublicKey: Uint8Array;
+}> {
   const { ConvexHttpClient } = await import("convex/browser");
   const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
   const bundle = await client.query(api.prekeys.getBundle, {
@@ -348,14 +361,17 @@ async function fetchBundle(
   });
   if (!bundle) throw new Error("Prekey bundle not found");
   return {
-    registrationId: bundle.registrationId,
-    identityKey: fromBase64(bundle.identityPublicKey),
-    signedPreKeyId: bundle.signedPreKeyId,
-    signedPreKey: fromBase64(bundle.signedPreKeyPublic),
-    signedPreKeySignature: fromBase64(bundle.signedPreKeySignature),
-    oneTimePreKeyId: bundle.oneTimePreKeyId,
-    oneTimePreKey: bundle.oneTimePreKeyPublic
-      ? fromBase64(bundle.oneTimePreKeyPublic)
-      : undefined,
+    bundle: {
+      registrationId: bundle.registrationId,
+      identityKey: fromBase64(bundle.identityPublicKey),
+      signedPreKeyId: bundle.signedPreKeyId,
+      signedPreKey: fromBase64(bundle.signedPreKeyPublic),
+      signedPreKeySignature: fromBase64(bundle.signedPreKeySignature),
+      oneTimePreKeyId: bundle.oneTimePreKeyId,
+      oneTimePreKey: bundle.oneTimePreKeyPublic
+        ? fromBase64(bundle.oneTimePreKeyPublic)
+        : undefined,
+    },
+    signingPublicKey: fromBase64(bundle.signingPublicKey),
   };
 }
