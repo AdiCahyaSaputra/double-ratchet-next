@@ -1,5 +1,5 @@
 import { ed25519 } from "@noble/curves/ed25519.js";
-import { concat, randomBytes, toBase64 } from "./bytes";
+import { concat, toBase64 } from "./bytes";
 import { hkdfSha256DefaultSalt } from "./hkdf";
 import { generateKeyPair, getSharedSecret } from "./x25519";
 import type { KeyPair, PreKeyBundle } from "./types";

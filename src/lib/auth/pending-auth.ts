@@ -10,6 +10,8 @@ export function savePendingAuth(auth: PendingAuth): void {
 }
 
 export function loadPendingAuth(): PendingAuth | null {
+	if (typeof sessionStorage === "undefined") return null;
+
   const raw = sessionStorage.getItem(PENDING_AUTH_KEY);
   if (!raw) return null;
   try {
