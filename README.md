@@ -111,6 +111,10 @@ src/hooks/            # useEncryptedChat, useDeviceSync, useDeviceLinking
 convex/               # Accounts, devices, messages, provisioning, deviceSync
 ```
 
+## Gap between Real Spec and Example Project
+
+This teaching project diverges from a production-grade Signal-style stack in several ways (trust records, prekey lifecycle, session recovery, sync channel design, and more). See the full gap map: [Gap between Real Spec and Example Project (#2)](https://github.com/AdiCahyaSaputra/double-ratchet-next/issues/2).
+
 ## Threat model
 
 | Threat | Mitigation |
