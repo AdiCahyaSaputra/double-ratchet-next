@@ -59,7 +59,7 @@ async function setupSession() {
       bundle.oneTimePreKeyId,
     );
 
-  let bobState = createRatchetState(sharedBob);
+  const bobState = createRatchetState(sharedBob);
   const { state: bobStateAfter, plaintext } = await decryptInitialMessage(
     bobState,
     firstEnvelope,
